@@ -75,34 +75,23 @@ export default function RegisterPage() {
 
     try {
       const submitData = new FormData();
-
-      // Append form fields
       Object.entries(formData).forEach(([key, value]) => {
         submitData.append(key, value);
       });
-
-      // Append files
       submitData.append("avatar", avatar);
       if (coverImage) {
         submitData.append("coverImage", coverImage);
       }
-
-      // Register user
       await register(submitData);
-
-      // Redirect on success
       router.push("/login?message=Registration successful! Please login.");
     } catch (err: unknown) {
       let errorMessage = "Something went wrong";
-
       if (err instanceof Error) {
         errorMessage = err.message;
       } else if (typeof err === "string") {
         errorMessage = err;
       }
-
       setError(errorMessage);
-
       if (errorMessage.toLowerCase().includes("email already exists")) {
         setTimeout(() => {
           router.push("/login?alreadyRegistered=true");

@@ -19,12 +19,12 @@ export default function HomePage() {
       const response = await apiClient.getVideos(pageNum, 12)
 
       if (pageNum === 1) {
-        setVideos(response.data.videos || [])
+        setVideos(response.videos || [])
       } else {
-        setVideos((prev) => [...prev, ...(response.data.videos || [])])
+        setVideos((prev) => [...prev, ...(response.videos || [])])
       }
 
-      setHasMore((response.data.videos || []).length === 12)
+      setHasMore((response.videos || []).length === 12)
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to load videos"
       setError(errorMessage)
