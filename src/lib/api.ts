@@ -1,3 +1,4 @@
+// src/lib/api.ts
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
@@ -13,11 +14,15 @@ export interface User {
   isSubscribed?: boolean;
 }
 
+export interface SubscribedChannel extends User {
+  subscribedAt?: string;
+}
+
 export interface Video {
   _id: string;
   title: string;
   description: string;
-  videoFile: string;
+  videofile: string;
   thumbnail: string;
   duration: number;
   views: number;
@@ -38,6 +43,16 @@ export interface Comment {
   createdAt: string;
   likes: number;
   isLiked?: boolean;
+}
+
+export interface ChannelProfileData {
+  _id: string;
+  username: string;
+  email: string;
+  avatar: string;
+  coverImage: string;
+  subscribersCount: number;
+  channelsSubscribedToCount: number;
 }
 
 export interface WatchHistoryItem {
@@ -63,6 +78,7 @@ class ApiClient {
 
     try {
       parsedBody = await response.json();
+      // console.log("Response body:", parsedBody);
     } catch {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
@@ -137,7 +153,7 @@ class ApiClient {
     const response = await fetch(
       `${API_BASE_URL}/users/getChannelInfo/${username}`,
       {
-        method: "POST",
+        method: "GET",
         headers: this.getAuthHeaders(),
       }
     );
@@ -162,6 +178,24 @@ class ApiClient {
       headers: this.getAuthHeaders(),
     });
     return this.handleResponse(response);
+  }
+
+  async getVideoByownerId(ownerId: string, page = 1, limit = 10) {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      limit: limit.toString(),
+    });
+
+    const response = await fetch(
+      `${API_BASE_URL}/videos/owner/${ownerId}?${params}`,
+      {
+        headers: this.getAuthHeaders(),
+      }
+    );
+
+    const json = await this.handleResponse(response);
+
+    return json;
   }
 
   async uploadVideo(formData: FormData) {
@@ -231,6 +265,29 @@ class ApiClient {
   async unsubscribeFromChannel(channelId: string) {
     const response = await fetch(`${API_BASE_URL}/subscriptions/${channelId}`, {
       method: "DELETE",
+      headers: this.getAuthHeaders(),
+    });
+    return this.handleResponse(response);
+  }
+
+  // NEW: Method for fetching videos by the logged-in user
+  async getYourVideos(page = 1, limit = 12) {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      limit: limit.toString(),
+    });
+    const response = await fetch(`${API_BASE_URL}/videos/my-videos?${params}`, {
+      // Endpoint: /api/v1/videos/my-videos
+      headers: this.getAuthHeaders(),
+    });
+    return this.handleResponse(response);
+  }
+
+  // NEW: Method for fetching subscribed channels
+  async getSubscribedChannels() {
+    const response = await fetch(`${API_BASE_URL}/users/subscriptions`, {
+      // Endpoint: /api/v1/users/subscriptions
+      method: "GET", // Typically a GET request for fetching data
       headers: this.getAuthHeaders(),
     });
     return this.handleResponse(response);
