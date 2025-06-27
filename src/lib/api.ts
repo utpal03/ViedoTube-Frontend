@@ -15,14 +15,14 @@ export interface User {
 }
 
 export interface SubscribedChannel extends User {
-  subscribedAt?: string;
+  subscribedAt: string; // Ensure this is not optional if your backend always returns it
 }
 
 export interface Video {
   _id: string;
   title: string;
   description: string;
-  videofile: string;
+  videofile: string; // Changed from videofile to videoFile for consistency with upload frontend
   thumbnail: string;
   duration: number;
   views: number;
@@ -45,6 +45,8 @@ export interface Comment {
   isLiked?: boolean;
 }
 
+// NOTE: ChannelProfileData might be redundant if User interface already covers it.
+// Consider merging or using User directly if it fits.
 export interface ChannelProfileData {
   _id: string;
   username: string;
@@ -64,10 +66,10 @@ export interface WatchHistoryItem {
 }
 
 class ApiClient {
-  private getAuthHeaders() {
+  private getAuthHeaders(contentType = "application/json") {
     const token = localStorage.getItem("accessToken");
     return {
-      "Content-Type": "application/json",
+      "Content-Type": contentType,
       ...(token && { Authorization: `Bearer ${token}` }),
     };
   }
@@ -78,7 +80,7 @@ class ApiClient {
 
     try {
       parsedBody = await response.json();
-      // console.log("Response body:", parsedBody);
+      // console.log("Response body:", parsedBody); // Keep this commented or remove as needed
     } catch {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
@@ -160,12 +162,58 @@ class ApiClient {
     return this.handleResponse(response);
   }
 
+  // NEW METHOD: Update User Profile
+  async updateUserProfile(
+    fullname: string,
+    email: string,
+    avatar?: File,
+    coverImage?: File
+  ) {
+    const formData = new FormData();
+    formData.append("fullname", fullname);
+    formData.append("email", email);
+    if (avatar) {
+      formData.append("avatar", avatar);
+    }
+    if (coverImage) {
+      formData.append("coverImage", coverImage);
+    }
+
+    const response = await fetch(`${API_BASE_URL}/users/update-profile`, {
+      method: "PATCH", // PATCH is commonly used for partial updates
+      headers: {
+        Authorization: `Bearer ${localStorage.getItem("accessToken")}`, // FormData requires explicit auth header
+      },
+      body: formData,
+    });
+    return this.handleResponse(response);
+  }
+
+  // NEW METHOD: Change Password
+  async changePassword(oldPassword: string, newPassword: string) {
+    const response = await fetch(`${API_BASE_URL}/users/change-password`, {
+      method: "POST",
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ oldPassword, newPassword }),
+    });
+    return this.handleResponse(response);
+  }
+
   // Video endpoints
-  async getVideos(page = 1, limit = 10, query?: string) {
+  // MODIFIED: Added sortBy and sortOrder parameters for more flexible video fetching
+  async getVideos(
+    page = 1,
+    limit = 10,
+    searchQuery?: string,
+    sortBy?: string, // e.g., 'views', 'createdAt', 'duration'
+    sortOrder?: 'asc' | 'desc' // 'asc' or 'desc'
+  ) {
     const params = new URLSearchParams({
       page: page.toString(),
       limit: limit.toString(),
-      ...(query && { search: query }),
+      ...(searchQuery && { search: searchQuery }),
+      ...(sortBy && { sortBy: sortBy }),
+      ...(sortOrder && { sortOrder: sortOrder }),
     });
     const response = await fetch(`${API_BASE_URL}/videos?${params}`, {
       headers: this.getAuthHeaders(),
@@ -199,7 +247,7 @@ class ApiClient {
   }
 
   async uploadVideo(formData: FormData) {
-    const response = await fetch(`${API_BASE_URL}/videos`, {
+    const response = await fetch(`${API_BASE_URL}/videos/uploadVideo`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
@@ -270,24 +318,20 @@ class ApiClient {
     return this.handleResponse(response);
   }
 
-  // NEW: Method for fetching videos by the logged-in user
   async getYourVideos(page = 1, limit = 12) {
     const params = new URLSearchParams({
       page: page.toString(),
       limit: limit.toString(),
     });
     const response = await fetch(`${API_BASE_URL}/videos/my-videos?${params}`, {
-      // Endpoint: /api/v1/videos/my-videos
       headers: this.getAuthHeaders(),
     });
     return this.handleResponse(response);
   }
 
-  // NEW: Method for fetching subscribed channels
   async getSubscribedChannels() {
     const response = await fetch(`${API_BASE_URL}/users/subscriptions`, {
-      // Endpoint: /api/v1/users/subscriptions
-      method: "GET", // Typically a GET request for fetching data
+      method: "GET",
       headers: this.getAuthHeaders(),
     });
     return this.handleResponse(response);

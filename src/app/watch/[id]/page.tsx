@@ -1,16 +1,16 @@
 // src/app/watch/[id]/page.tsx
 "use client"
 
-import { useEffect, useState } from "react" // Removed `use as ReactUse`
-import { apiClient, type Video } from "@/lib/api" //
-import VideoPlayer from "@/components/VideoPlayer" //
-import CommentSection from "@/components/CommentSection" //
-import { useAuth } from "@/contexts/AuthContext" //
-import { Button } from "@/components/ui/button" //
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar" //
+import { useEffect, useState } from "react"
+import { apiClient, type Video } from "@/lib/api"
+import VideoPlayer from "@/components/VideoPlayer"
+import CommentSection from "@/components/CommentSection"
+import { useAuth } from "@/contexts/AuthContext"
+import { Button } from "@/components/ui/button"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ThumbsUp, ThumbsDown, Loader2 } from 'lucide-react'
-import { formatDistanceToNow } from "date-fns" //
-import { Alert, AlertDescription } from "@/components/ui/alert" //
+import { formatDistanceToNow } from "date-fns"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import Link from "next/link"
 
 interface WatchPageProps {
@@ -32,8 +32,9 @@ export default function WatchPage({ params }: WatchPageProps) {
     const fetchVideo = async () => {
       try {
         setLoading(true)
+        // Ensure you're accessing the correct property from the response (e.g., response.data.video if your API wraps it)
         const response = await apiClient.getVideoById(videoId)
-        setVideo(response.video)
+        setVideo(response.video) // Assuming response directly contains the video object
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : "Failed to load video"
         setError(errorMessage)
@@ -45,18 +46,18 @@ export default function WatchPage({ params }: WatchPageProps) {
     if (videoId) {
       fetchVideo()
     }
-  }, [videoId])
+  }, [videoId, isAuthenticated]) // Added isAuthenticated to useEffect dependencies to refetch if auth status changes
 
   const handleLike = async () => {
     if (!video || !isAuthenticated) return
     try {
-      await apiClient.likeVideo(video._id) //
+      await apiClient.likeVideo(video._id)
       setVideo((prev) => {
         if (!prev) return null
         return {
           ...prev,
           likes: prev.isLiked ? prev.likes - 1 : prev.likes + 1,
-          dislikes: prev.isDisliked ? prev.dislikes - 1 : prev.dislikes, // Remove dislike if previously disliked
+          dislikes: prev.isDisliked ? prev.dislikes - 1 : prev.dislikes,
           isLiked: !prev.isLiked,
           isDisliked: false,
         }
@@ -70,13 +71,13 @@ export default function WatchPage({ params }: WatchPageProps) {
   const handleDislike = async () => {
     if (!video || !isAuthenticated) return
     try {
-      await apiClient.dislikeVideo(video._id) //
+      await apiClient.dislikeVideo(video._id)
       setVideo((prev) => {
         if (!prev) return null
         return {
           ...prev,
           dislikes: prev.isDisliked ? prev.dislikes - 1 : prev.dislikes + 1,
-          likes: prev.isLiked ? prev.likes - 1 : prev.likes, // Remove like if previously liked
+          likes: prev.isLiked ? prev.likes - 1 : prev.likes,
           isDisliked: !prev.isDisliked,
           isLiked: false,
         }
@@ -91,7 +92,7 @@ export default function WatchPage({ params }: WatchPageProps) {
     if (!video?.owner || !isAuthenticated) return
     try {
       if (video.owner.isSubscribed) {
-        await apiClient.unsubscribeFromChannel(video.owner._id) //
+        await apiClient.unsubscribeFromChannel(video.owner._id)
         setVideo((prev) =>
           prev
             ? {
@@ -105,7 +106,7 @@ export default function WatchPage({ params }: WatchPageProps) {
             : null,
         )
       } else {
-        await apiClient.subscribeToChannel(video.owner._id) //
+        await apiClient.subscribeToChannel(video.owner._id)
         setVideo((prev) =>
           prev
             ? {
@@ -136,7 +137,8 @@ export default function WatchPage({ params }: WatchPageProps) {
 
   if (loading) {
     return (
-      <div className="ml-0 md:ml-64 flex items-center justify-center min-h-[400px]">
+      // REMOVED 'ml-0 md:ml-64'
+      <div className="flex items-center justify-center min-h-[400px]">
         <Loader2 className="h-8 w-8 animate-spin" />
       </div>
     )
@@ -144,7 +146,8 @@ export default function WatchPage({ params }: WatchPageProps) {
 
   if (error) {
     return (
-      <div className="ml-0 md:ml-64 container mx-auto px-4 py-8">
+      // REMOVED 'ml-0 md:ml-64'
+      <div className="container mx-auto px-4 py-8">
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
@@ -155,7 +158,8 @@ export default function WatchPage({ params }: WatchPageProps) {
 
   if (!video) {
     return (
-      <div className="ml-0 md:ml-64 container mx-auto px-4 py-8">
+      // REMOVED 'ml-0 md:ml-64'
+      <div className="container mx-auto px-4 py-8">
         <Alert>
           <AlertDescription>Video not found.</AlertDescription>
         </Alert>
@@ -164,14 +168,14 @@ export default function WatchPage({ params }: WatchPageProps) {
   }
 
   return (
-    <div className="ml-0 md:ml-64">
+    // REMOVED 'ml-0 md:ml-64' from this main wrapper
+    <div>
       <div className="container mx-auto px-4 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2">
+        {/* Changed lg:grid-cols-3 to md:grid-cols-3 */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          {/* Changed lg:col-span-2 to md:col-span-2 */}
+          <div className="md:col-span-2">
             <VideoPlayer videoId={video._id} videoUrl={video.videofile} />
-            {
-              /* Video title and details */
-            } 
 
             <h1 className="text-xl font-bold mt-4">{video.title}</h1>
             <div className="flex items-center justify-between mt-2 flex-wrap gap-2">
@@ -207,7 +211,7 @@ export default function WatchPage({ params }: WatchPageProps) {
             <div className="flex items-center space-x-4 mt-6 border-t pt-4">
               <Link href={`/channel/${video.owner.username}`}>
                 <Avatar className="h-10 w-10">
-                  <AvatarImage src={video.owner.avatar || "/placeholder.svg"} alt={video.owner.fullname} /> {/* */}
+                  <AvatarImage src={video.owner.avatar || "/placeholder.svg"} alt={video.owner.fullname} />
                   <AvatarFallback>{video.owner.fullname?.charAt(0)}</AvatarFallback>
                 </Avatar>
               </Link>
@@ -231,11 +235,11 @@ export default function WatchPage({ params }: WatchPageProps) {
             </div>
 
             <div className="mt-8">
-              <CommentSection videoId={video._id} /> {/* */}
+              <CommentSection videoId={video._id} />
             </div>
           </div>
-          {/* You can add related videos sidebar here */}
-          <div className="lg:col-span-1">
+          {/* Changed lg:col-span-1 to md:col-span-1 */}
+          <div className="md:col-span-1">
             {/* Related videos or other content */}
             <h3 className="text-xl font-bold mb-4">Related Videos</h3>
             {/* Implement logic to fetch and display related videos here */}

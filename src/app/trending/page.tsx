@@ -1,22 +1,27 @@
+// src/app/trending/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
-import { apiClient, type Video } from "@/lib/api";
-import VideoCard from "@/components/VideoCard";
-import { Button } from "@/components/ui/button";
+import { apiClient, type Video } from "@/lib/api"; //
+import VideoCard from "@/components/VideoCard"; //
+import { Button } from "@/components/ui/button"; //
 import { Loader2 } from "lucide-react";
 
-export default function HomePage() {
+export default function TrendingPage() {
   const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
 
-  const loadVideos = async (pageNum = 1) => {
+  const loadTrendingVideos = async (pageNum = 1) => {
     try {
       setLoading(true);
-      const response = await apiClient.getVideos(pageNum, 12);
+      // You will need to implement a backend API for trending videos.
+      // For now, it reuses getVideos, assuming your backend can handle a 'trending' query or similar.
+      // You might pass a specific query parameter like 'sort=trending'.
+      const response = await apiClient.getVideos(pageNum, 12, "trending"); // Example: pass "trending" as a query
+      // Adjust this API call based on your actual backend trending endpoint.
 
       if (pageNum === 1) {
         setVideos(response.videos || []);
@@ -27,7 +32,7 @@ export default function HomePage() {
       setHasMore((response.videos || []).length === 12);
     } catch (err) {
       const errorMessage =
-        err instanceof Error ? err.message : "Failed to load videos";
+        err instanceof Error ? err.message : "Failed to load trending videos";
       setError(errorMessage);
     } finally {
       setLoading(false);
@@ -35,18 +40,18 @@ export default function HomePage() {
   };
 
   useEffect(() => {
-    loadVideos();
+    loadTrendingVideos();
   }, []);
 
   const loadMore = () => {
     const nextPage = page + 1;
     setPage(nextPage);
-    loadVideos(nextPage);
+    loadTrendingVideos(nextPage);
   };
 
   const handleRetry = () => {
     setError("");
-    loadVideos(1);
+    loadTrendingVideos(1);
     setPage(1);
   };
 
@@ -74,8 +79,9 @@ export default function HomePage() {
   }
 
   return (
-    <div>
+    <div className="container mx-auto px-4 py-8">
       <div className="container mx-auto px-4 py-8">
+        <h1 className="text-3xl font-bold mb-8">Trending Videos</h1>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {videos.map((video) => (
             <VideoCard key={video._id} video={video} />

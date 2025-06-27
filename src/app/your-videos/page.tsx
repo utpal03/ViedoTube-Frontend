@@ -88,7 +88,7 @@ export default function YourVideosPage() {
   }
 
   return (
-    <div className="ml-0 md:ml-64">
+    <div className="container mx-auto px-4 py-8">
       <div className="container mx-auto px-4 py-8">
         <div className="flex items-center space-x-2 mb-8">
           <PlaySquare className="h-6 w-6" />

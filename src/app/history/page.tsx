@@ -1,70 +1,74 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import { apiClient, type WatchHistoryItem } from "@/lib/api"
-import { useAuth } from "@/contexts/AuthContext"
-import VideoCard from "@/components/VideoCard"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Trash2, Clock, Loader2 } from 'lucide-react'
-import { formatDistanceToNow } from "date-fns"
+import { useEffect, useState } from "react";
+import { apiClient, type WatchHistoryItem } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
+import VideoCard from "@/components/VideoCard";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Trash2, Clock, Loader2 } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
 
 export default function WatchHistoryPage() {
-  const [history, setHistory] = useState<WatchHistoryItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState("")
-  const [clearing, setClearing] = useState(false)
-  const { isAuthenticated } = useAuth()
+  const [history, setHistory] = useState<WatchHistoryItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [clearing, setClearing] = useState(false);
+  const { isAuthenticated } = useAuth();
 
   useEffect(() => {
     if (isAuthenticated) {
-      loadWatchHistory()
+      loadWatchHistory();
     }
-  }, [isAuthenticated])
+  }, [isAuthenticated]);
 
   const loadWatchHistory = async () => {
     try {
-      setLoading(true)
-      const response = await apiClient.getWatchHistory()
-      setHistory(response.data.history || [])
+      setLoading(true);
+      const response = await apiClient.getWatchHistory();
+      setHistory(response.data.history || []);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to load watch history"
-      setError(errorMessage)
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to load watch history";
+      setError(errorMessage);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const clearHistory = async () => {
     try {
-      setClearing(true)
-      await apiClient.clearWatchHistory()
-      setHistory([])
+      setClearing(true);
+      await apiClient.clearWatchHistory();
+      setHistory([]);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to clear watch history"
-      setError(errorMessage)
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to clear watch history";
+      setError(errorMessage);
     } finally {
-      setClearing(false)
+      setClearing(false);
     }
-  }
+  };
 
   const formatWatchTime = (seconds: number): string => {
-    const minutes = Math.floor(seconds / 60)
-    const remainingSeconds = Math.floor(seconds % 60)
-    return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`
-  }
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.floor(seconds % 60);
+    return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
+  };
 
   if (!isAuthenticated) {
     return (
       <div className="ml-0 md:ml-64">
         <div className="container mx-auto px-4 py-8">
           <Alert>
-            <AlertDescription>Please log in to view your watch history.</AlertDescription>
+            <AlertDescription>
+              Please log in to view your watch history.
+            </AlertDescription>
           </Alert>
         </div>
       </div>
-    )
+    );
   }
 
   if (loading) {
@@ -74,11 +78,11 @@ export default function WatchHistoryPage() {
           <Loader2 className="h-8 w-8 animate-spin" />
         </div>
       </div>
-    )
+    );
   }
 
   return (
-    <div className="ml-0 md:ml-64">
+    <div className="container mx-auto px-4 py-8">
       <div className="container mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center space-x-2">
@@ -109,25 +113,37 @@ export default function WatchHistoryPage() {
             <CardContent className="flex flex-col items-center justify-center py-12">
               <Clock className="h-12 w-12 text-muted-foreground mb-4" />
               <h3 className="text-lg font-semibold mb-2">No watch history</h3>
-              <p className="text-muted-foreground text-center">Videos you watch will appear here</p>
+              <p className="text-muted-foreground text-center">
+                Videos you watch will appear here
+              </p>
             </CardContent>
           </Card>
         ) : (
           <div className="space-y-6">
             {history.map((item) => (
-              <div key={item._id} className="flex space-x-4 p-4 border rounded-lg">
+              <div
+                key={item._id}
+                className="flex space-x-4 p-4 border rounded-lg"
+              >
                 <div className="w-48 flex-shrink-0">
                   <VideoCard video={item.video} showChannel={false} />
                 </div>
                 <div className="flex-1">
-                  <h3 className="font-semibold text-lg mb-2">{item.video.title}</h3>
-                  <p className="text-sm text-muted-foreground mb-2">{item.video.owner.fullname}</p>
+                  <h3 className="font-semibold text-lg mb-2">
+                    {item.video.title}
+                  </h3>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    {item.video.owner.fullname}
+                  </p>
                   <p className="text-sm text-muted-foreground mb-2">
                     {item.video.views.toLocaleString()} views
                   </p>
                   <div className="flex items-center space-x-4 text-sm text-muted-foreground">
                     <span>
-                      Watched {formatDistanceToNow(new Date(item.watchedAt), { addSuffix: true })}
+                      Watched{" "}
+                      {formatDistanceToNow(new Date(item.watchedAt), {
+                        addSuffix: true,
+                      })}
                     </span>
                     {item.watchTime > 0 && (
                       <span>Progress: {formatWatchTime(item.watchTime)}</span>
@@ -140,5 +156,5 @@ export default function WatchHistoryPage() {
         )}
       </div>
     </div>
-  )
+  );
 }

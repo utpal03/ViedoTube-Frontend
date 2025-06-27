@@ -1,10 +1,11 @@
+// src/components/Sidebar.tsx
 "use client"
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useAuth } from "@/contexts/AuthContext"
 import { cn } from "@/lib/utils"
-import { Home, TrendingUp, ShoppingCartIcon as Subscriptions, History, ThumbsUp, Clock, PlaySquare, Settings, HelpCircle, LucideIcon } from 'lucide-react'
+import { Home, TrendingUp, ShoppingCartIcon as Subscriptions, History, ThumbsUp, PlaySquare, Settings, HelpCircle, LucideIcon } from 'lucide-react'
 
 interface SidebarItemType {
   title: string
@@ -51,12 +52,7 @@ const libraryItems: SidebarItemType[] = [
     icon: ThumbsUp,
     requireAuth: true,
   },
-  {
-    title: "Watch Later",
-    href: "/watch-later",
-    icon: Clock,
-    requireAuth: true,
-  },
+  // "Watch Later" removed
 ]
 
 const bottomItems: SidebarItemType[] = [
@@ -76,7 +72,11 @@ interface SidebarItemProps {
   item: SidebarItemType
 }
 
-export default function Sidebar() {
+interface SidebarProps {
+  isOpen: boolean // Prop for sidebar visibility
+}
+
+export default function Sidebar({ isOpen }: SidebarProps) {
   const pathname = usePathname()
   const { isAuthenticated } = useAuth()
 
@@ -105,7 +105,19 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className="fixed left-0 top-16 h-[calc(100vh-4rem)] w-64 border-r bg-background overflow-y-auto">
+    <aside
+      className={cn(
+        // Base classes: always fixed on mobile, but static on desktop
+        "fixed top-16 h-[calc(100vh-4rem)] w-64 border-r bg-background overflow-y-auto transition-transform duration-300 z-40",
+        // Desktop (md breakpoint and up):
+        "md:sticky md:top-16 md:block md:translate-x-0 md:flex-shrink-0 md:min-w-[16rem]", // Becomes sticky, block, and no transform, occupies space
+        // Mobile (below md breakpoint):
+        {
+          "translate-x-0": isOpen, // Slide in when open
+          "-translate-x-full": !isOpen, // Hide by default when closed
+        }
+      )}
+    >
       <div className="p-4 space-y-6">
         <nav className="space-y-1">
           {sidebarItems.map((item) => (

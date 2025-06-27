@@ -1,3 +1,4 @@
+// src/components/Header.tsx
 "use client"
 
 import type React from "react"
@@ -5,9 +6,7 @@ import type React from "react"
 import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-// Update the import path if AuthContext is located elsewhere, for example:
 import { useAuth } from "../contexts/AuthContext"
-// Or, if the file does not exist, create 'src/contexts/AuthContext.tsx' and export useAuth from it.
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -20,7 +19,11 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Search, Upload, User, LogOut, Settings, Menu } from "lucide-react"
 
-export default function Header() {
+interface HeaderProps {
+  onMenuClick: () => void // New prop for toggling sidebar
+}
+
+export default function Header({ onMenuClick }: HeaderProps) { // Accept onMenuClick prop
   const [searchQuery, setSearchQuery] = useState("")
   const { user, logout, isAuthenticated } = useAuth()
   const router = useRouter()
@@ -36,7 +39,8 @@ export default function Header() {
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="flex h-16 items-center justify-between px-4">
         <div className="flex items-center space-x-4">
-          <Button variant="ghost" size="sm" className="md:hidden">
+          {/* Call onMenuClick when the menu button is pressed */}
+          <Button variant="ghost" size="sm" className="md:hidden" onClick={onMenuClick}>
             <Menu className="h-5 w-5" />
           </Button>
 

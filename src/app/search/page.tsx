@@ -1,22 +1,35 @@
+// src/app/search/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
-import { apiClient, type Video } from "@/lib/api";
-import VideoCard from "@/components/VideoCard";
-import { Button } from "@/components/ui/button";
+import { useSearchParams } from "next/navigation";
+import { apiClient, type Video } from "@/lib/api"; //
+import VideoCard from "@/components/VideoCard"; //
+import { Button } from "@/components/ui/button"; //
 import { Loader2 } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert"; //
 
-export default function HomePage() {
+export default function SearchResultsPage() {
+  const searchParams = useSearchParams();
+  const searchQuery = searchParams.get("q") || "";
+
   const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
 
-  const loadVideos = async (pageNum = 1) => {
+  const loadSearchResults = async (pageNum = 1) => {
+    if (!searchQuery.trim()) {
+      setLoading(false);
+      setVideos([]);
+      setHasMore(false);
+      return;
+    }
+
     try {
       setLoading(true);
-      const response = await apiClient.getVideos(pageNum, 12);
+      const response = await apiClient.getVideos(pageNum, 12, searchQuery); //
 
       if (pageNum === 1) {
         setVideos(response.videos || []);
@@ -27,7 +40,7 @@ export default function HomePage() {
       setHasMore((response.videos || []).length === 12);
     } catch (err) {
       const errorMessage =
-        err instanceof Error ? err.message : "Failed to load videos";
+        err instanceof Error ? err.message : "Failed to load search results";
       setError(errorMessage);
     } finally {
       setLoading(false);
@@ -35,20 +48,35 @@ export default function HomePage() {
   };
 
   useEffect(() => {
-    loadVideos();
-  }, []);
+    setPage(1); // Reset page when search query changes
+    setVideos([]); // Clear previous videos
+    setHasMore(true); // Assume there's more until proven otherwise
+    loadSearchResults(1);
+  }, [searchQuery]); // Rerun effect when searchQuery changes
 
   const loadMore = () => {
     const nextPage = page + 1;
     setPage(nextPage);
-    loadVideos(nextPage);
+    loadSearchResults(nextPage);
   };
 
   const handleRetry = () => {
     setError("");
-    loadVideos(1);
+    loadSearchResults(1);
     setPage(1);
   };
+
+  if (!searchQuery.trim()) {
+    return (
+      <div className="ml-0 md:ml-64">
+        <div className="container mx-auto px-4 py-8">
+          <Alert>
+            <AlertDescription>Please enter a search query.</AlertDescription>
+          </Alert>
+        </div>
+      </div>
+    );
+  }
 
   if (loading && videos.length === 0) {
     return (
@@ -74,13 +102,24 @@ export default function HomePage() {
   }
 
   return (
-    <div>
+    <div className="container mx-auto px-4 py-8">
       <div className="container mx-auto px-4 py-8">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {videos.map((video) => (
-            <VideoCard key={video._id} video={video} />
-          ))}
-        </div>
+        <h1 className="text-3xl font-bold mb-8">
+          Search Results for &quot;{searchQuery}&quot;
+        </h1>
+        {videos.length === 0 && !loading && !error ? (
+          <Alert>
+            <AlertDescription>
+              No videos found for &quot;{searchQuery}&quot;.
+            </AlertDescription>
+          </Alert>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {videos.map((video) => (
+              <VideoCard key={video._id} video={video} />
+            ))}
+          </div>
+        )}
 
         {hasMore && (
           <div className="flex justify-center mt-8">

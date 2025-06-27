@@ -115,7 +115,7 @@ export default function ChannelPage({ params }: ChannelPageProps) {
   }
 
   return (
-    <div className="ml-0 md:ml-64">
+    <div className="container mx-auto px-4 py-8">
       <div className="container mx-auto px-4 py-8">
         {channel.coverImage && (
           <div className="relative w-full h-48 bg-muted rounded-lg overflow-hidden mb-8">
