@@ -17,7 +17,7 @@ import { Upload, Loader2, Video as VideoIcon } from "lucide-react"
 export default function UploadPage() {
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
-  const [videoFile, setVideoFile] = useState<File | null>(null)
+  const [videofile, setVideoFile] = useState<File | null>(null)
   const [thumbnailFile, setThumbnailFile] = useState<File | null>(null)
   const [duration, setDuration] = useState<number>(0)
   const [error, setError] = useState("")
@@ -47,7 +47,7 @@ export default function UploadPage() {
     }
   }
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => { 
     e.preventDefault()
     setError("")
 
@@ -56,7 +56,7 @@ export default function UploadPage() {
       return
     }
 
-    if (!title.trim() || !description.trim() || !videoFile || !thumbnailFile || duration === 0) {
+    if (!title.trim() || !description.trim() || !videofile || !thumbnailFile || duration === 0) {
       setError("Please fill in all required fields and select both video and thumbnail files. Ensure video duration is loaded.")
       return
     }
@@ -67,7 +67,7 @@ export default function UploadPage() {
       const formData = new FormData()
       formData.append("title", title)
       formData.append("description", description)
-      formData.append("videoFile", videoFile)
+      formData.append("videofile", videofile)
       formData.append("thumbnail", thumbnailFile)
       formData.append("duration", duration.toString())
 
@@ -172,10 +172,10 @@ export default function UploadPage() {
                   className="w-full"
                 >
                   <VideoIcon className="h-4 w-4 mr-2" />
-                  {videoFile ? videoFile.name : "Choose Video File"}
+                  {videofile ? videofile.name : "Choose Video File"}
                 </Button>
               </div>
-              {videoFile && duration > 0 && (
+              {videofile && duration > 0 && (
                 <p className="text-sm text-muted-foreground mt-1">Duration: {Math.round(duration)} seconds</p>
               )}
             </div>

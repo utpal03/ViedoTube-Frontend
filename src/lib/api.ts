@@ -15,18 +15,18 @@ export interface User {
 }
 
 export interface SubscribedChannel extends User {
-  subscribedAt: string; // Ensure this is not optional if your backend always returns it
+  subscribedAt: string;
 }
 
 export interface Video {
   _id: string;
   title: string;
   description: string;
-  videofile: string; // Changed from videofile to videoFile for consistency with upload frontend
+  videofile: string;
   thumbnail: string;
-  duration: number;
+  duration?: number;
   views: number;
-  isPublished: boolean;
+  ispublished: boolean;
   owner: User;
   createdAt: string;
   likes: number;
@@ -45,8 +45,6 @@ export interface Comment {
   isLiked?: boolean;
 }
 
-// NOTE: ChannelProfileData might be redundant if User interface already covers it.
-// Consider merging or using User directly if it fits.
 export interface ChannelProfileData {
   _id: string;
   username: string;
@@ -66,21 +64,27 @@ export interface WatchHistoryItem {
 }
 
 class ApiClient {
-  private getAuthHeaders(contentType = "application/json") {
-    const token = localStorage.getItem("accessToken");
-    return {
-      "Content-Type": contentType,
-      ...(token && { Authorization: `Bearer ${token}` }),
-    };
+  private isRefreshing = false;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private failedQueue: { resolve: (value: any) => void; reject: (reason?: any) => void; }[] = [];
+
+  // getAuthHeaders will ONLY set Content-Type if specified.
+  // It will NOT set Authorization header as tokens are now assumed to be in cookies.
+  private getAuthHeaders(contentType?: string) {
+    const headers: Record<string, string> = {};
+    if (contentType) {
+      headers["Content-Type"] = contentType;
+    }
+    return headers;
   }
 
+  // handleResponse now just parses and throws on !response.ok
   private async handleResponse(response: Response) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let parsedBody: any;
 
     try {
       parsedBody = await response.json();
-      // console.log("Response body:", parsedBody); // Keep this commented or remove as needed
     } catch {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
@@ -88,21 +92,85 @@ class ApiClient {
     if (!response.ok) {
       const message =
         parsedBody.message || parsedBody.error || "Something went wrong";
-      throw new Error(message);
+      // Throw an error that includes the HTTP status for easier handling
+      throw new Error(`HTTP ${response.status}: ${message}`);
     }
 
     return parsedBody;
   }
 
-  // Auth endpoints
-  async register(formData: FormData) {
-    const response = await fetch(`${API_BASE_URL}/users/register`, {
-      method: "POST",
-      body: formData,
-    });
-    return this.handleResponse(response);
+  // NEW METHOD: fetchWithAuth - wraps all authenticated API calls for token refresh logic
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private async fetchWithAuth(url: string, options?: RequestInit): Promise<any> {
+    try {
+      const response = await fetch(url, options);
+      return await this.handleResponse(response); // This will throw for 401, 404, etc.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (error: any) {
+      const isUnauthorized = error.message && error.message.includes("HTTP 401");
+      const isRefreshEndpoint = url.includes(`${API_BASE_URL}/users/refresh-token`);
+
+      if (isUnauthorized && !isRefreshEndpoint) {
+        // This is a 401 from an endpoint other than refresh-token
+        if (this.isRefreshing) {
+          // If a refresh is already in progress, queue the original request
+          return new Promise((resolve, reject) => {
+            this.failedQueue.push({ resolve, reject });
+          }).then(() => {
+            // After refresh, retry the original request
+            return this.fetchWithAuth(url, options);
+          }).catch(err => {
+            return Promise.reject(err);
+          });
+        }
+
+        // No refresh in progress, so start one
+        this.isRefreshing = true;
+
+        return new Promise(async (resolve, reject) => {
+          try {
+            await this.refreshToken(); // Attempt to refresh token (gets new cookie)
+            this.isRefreshing = false;
+            this.processQueue(null); // Process all queued requests (signal success)
+
+            // Retry the original failed request immediately
+            resolve(await this.fetchWithAuth(url, options));
+
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          } catch (refreshError: any) {
+            this.isRefreshing = false;
+            this.processQueue(refreshError); // Process all queued requests with the refresh error
+
+            // Trigger global logout (e.g., redirect to login page)
+            console.error("Session expired, please log in again.");
+            // This redirect should ideally be handled by AuthContext via router.push
+            // For now, we'll re-throw the error, and AuthContext can catch it.
+            reject(refreshError);
+          }
+        });
+      }
+      return Promise.reject(error); // Re-throw other errors or non-401s
+    }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private processQueue(error: any | null) {
+    this.failedQueue.forEach(prom => {
+      if (error) {
+        prom.reject(error);
+      } else {
+        prom.resolve(true); // Signal success for queued requests to retry
+      }
+    });
+    this.failedQueue = [];
+  }
+
+  // Auth endpoints (most will now use fetchWithAuth)
+  async register(formData: FormData) {
+    return this.fetchWithAuth(`${API_BASE_URL}/users/register`, { method: "POST", body: formData, credentials: "include" });
+  }
+
+  // login does NOT use fetchWithAuth to avoid recursion/queuing for initial auth
   async login(email: string, password: string) {
     const response = await fetch(`${API_BASE_URL}/users/login`, {
       method: "POST",
@@ -110,259 +178,131 @@ class ApiClient {
       body: JSON.stringify({ email, password }),
       credentials: "include",
     });
-    return this.handleResponse(response);
+    return await this.handleResponse(response);
   }
 
   async logout() {
-    const response = await fetch(`${API_BASE_URL}/users/logout`, {
-      method: "POST",
-      headers: this.getAuthHeaders(),
-      credentials: "include",
-    });
-    return this.handleResponse(response);
+    return this.fetchWithAuth(`${API_BASE_URL}/users/logout`, { method: "POST", headers: this.getAuthHeaders(), credentials: "include" });
   }
 
   async forgotPassword(email: string) {
-    const response = await fetch(`${API_BASE_URL}/users/forget-password`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
-    });
-    return this.handleResponse(response);
+    return this.fetchWithAuth(`${API_BASE_URL}/users/forget-password`, { method: "POST", headers: this.getAuthHeaders(), body: JSON.stringify({ email }), credentials: "include" });
   }
 
   async resetPassword(token: string, newPassword: string) {
-    const response = await fetch(
-      `${API_BASE_URL}/users/reset-password/${token}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ newPassword }),
-      }
-    );
-    return this.handleResponse(response);
+    return this.fetchWithAuth(`${API_BASE_URL}/users/reset-password/${token}`, { method: "POST", headers: this.getAuthHeaders(), body: JSON.stringify({ newPassword }), credentials: "include" });
   }
 
+  // refreshToken does NOT use fetchWithAuth to avoid recursion
+  // It's called internally by fetchWithAuth when a refresh is needed
   async refreshToken() {
-    const response = await fetch(`${API_BASE_URL}/users/refresh-token`, {
-      method: "POST",
-      credentials: "include",
-    });
-    return this.handleResponse(response);
+    const response = await fetch(`${API_BASE_URL}/users/refresh-token`, { method: "POST", credentials: "include" });
+    return await this.handleResponse(response); // This can also throw a 401 if refresh token is expired/invalid
   }
 
+  // Current user endpoint
+  async getCurrentUser() {
+    return this.fetchWithAuth(`${API_BASE_URL}/users/current-user`, { method: "GET", headers: this.getAuthHeaders(), credentials: "include" });
+  }
+
+  // Channel profile endpoint
   async getChannelProfile(username: string) {
-    const response = await fetch(
-      `${API_BASE_URL}/users/getChannelInfo/${username}`,
-      {
-        method: "GET",
-        headers: this.getAuthHeaders(),
-      }
-    );
-    return this.handleResponse(response);
+    return this.fetchWithAuth(`${API_BASE_URL}/users/getChannelInfo/${username}`, { method: "GET", headers: this.getAuthHeaders(), credentials: "include" });
   }
 
-  // NEW METHOD: Update User Profile
-  async updateUserProfile(
-    fullname: string,
-    email: string,
-    avatar?: File,
-    coverImage?: File
-  ) {
+  // User profile update endpoint
+  async updateUserProfile(fullname: string, email: string, avatar?: File, coverImage?: File) {
     const formData = new FormData();
     formData.append("fullname", fullname);
     formData.append("email", email);
-    if (avatar) {
-      formData.append("avatar", avatar);
-    }
-    if (coverImage) {
-      formData.append("coverImage", coverImage);
-    }
-
-    const response = await fetch(`${API_BASE_URL}/users/update-profile`, {
-      method: "PATCH", // PATCH is commonly used for partial updates
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem("accessToken")}`, // FormData requires explicit auth header
-      },
-      body: formData,
-    });
-    return this.handleResponse(response);
+    if (avatar) formData.append("avatar", avatar);
+    if (coverImage) formData.append("coverImage", coverImage);
+    return this.fetchWithAuth(`${API_BASE_URL}/users/update-profile`, { method: "PATCH", headers: this.getAuthHeaders(undefined), body: formData, credentials: "include" });
   }
 
-  // NEW METHOD: Change Password
+  // Change password endpoint
   async changePassword(oldPassword: string, newPassword: string) {
-    const response = await fetch(`${API_BASE_URL}/users/change-password`, {
-      method: "POST",
-      headers: this.getAuthHeaders(),
-      body: JSON.stringify({ oldPassword, newPassword }),
-    });
-    return this.handleResponse(response);
+    return this.fetchWithAuth(`${API_BASE_URL}/users/change-password`, { method: "POST", headers: this.getAuthHeaders(), body: JSON.stringify({ oldPassword, newPassword }), credentials: "include" });
   }
 
   // Video endpoints
-  // MODIFIED: Added sortBy and sortOrder parameters for more flexible video fetching
-  async getVideos(
-    page = 1,
-    limit = 10,
-    searchQuery?: string,
-    sortBy?: string, // e.g., 'views', 'createdAt', 'duration'
-    sortOrder?: 'asc' | 'desc' // 'asc' or 'desc'
-  ) {
-    const params = new URLSearchParams({
-      page: page.toString(),
-      limit: limit.toString(),
-      ...(searchQuery && { search: searchQuery }),
-      ...(sortBy && { sortBy: sortBy }),
-      ...(sortOrder && { sortOrder: sortOrder }),
-    });
-    const response = await fetch(`${API_BASE_URL}/videos?${params}`, {
-      headers: this.getAuthHeaders(),
-    });
-    return this.handleResponse(response);
+  async getVideos(page = 1, limit = 10, searchQuery?: string, sortBy?: string, sortOrder?: 'asc' | 'desc') {
+    const params = new URLSearchParams({ page: page.toString(), limit: limit.toString(), ...(searchQuery && { search: searchQuery }), ...(sortBy && { sortBy: sortBy }), ...(sortOrder && { sortOrder: sortOrder }) });
+    return this.fetchWithAuth(`${API_BASE_URL}/videos?${params}`, { method: "GET", headers: this.getAuthHeaders(), credentials: "include" });
   }
 
   async getVideoById(videoId: string) {
-    const response = await fetch(`${API_BASE_URL}/videos/${videoId}`, {
-      headers: this.getAuthHeaders(),
-    });
-    return this.handleResponse(response);
+    return this.fetchWithAuth(`${API_BASE_URL}/videos/${videoId}`, { method: "GET", headers: this.getAuthHeaders(), credentials: "include" });
   }
 
   async getVideoByownerId(ownerId: string, page = 1, limit = 10) {
-    const params = new URLSearchParams({
-      page: page.toString(),
-      limit: limit.toString(),
-    });
-
-    const response = await fetch(
-      `${API_BASE_URL}/videos/owner/${ownerId}?${params}`,
-      {
-        headers: this.getAuthHeaders(),
-      }
-    );
-
-    const json = await this.handleResponse(response);
-
-    return json;
+    const params = new URLSearchParams({ page: page.toString(), limit: limit.toString() });
+    return this.fetchWithAuth(`${API_BASE_URL}/videos/owner/${ownerId}?${params}`, { method: "GET", headers: this.getAuthHeaders(), credentials: "include" });
   }
 
   async uploadVideo(formData: FormData) {
-    const response = await fetch(`${API_BASE_URL}/videos/uploadVideo`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
-      },
-      body: formData,
-    });
-    return this.handleResponse(response);
+    return this.fetchWithAuth(`${API_BASE_URL}/videos/uploadVideo`, { method: "POST", headers: this.getAuthHeaders(undefined), body: formData, credentials: "include" });
   }
 
   async likeVideo(videoId: string) {
-    const response = await fetch(`${API_BASE_URL}/videos/${videoId}/like`, {
-      method: "POST",
-      headers: this.getAuthHeaders(),
-    });
-    return this.handleResponse(response);
+    return this.fetchWithAuth(`${API_BASE_URL}/videos/${videoId}/like`, { method: "POST", headers: this.getAuthHeaders(), credentials: "include" });
   }
 
   async dislikeVideo(videoId: string) {
-    const response = await fetch(`${API_BASE_URL}/videos/${videoId}/dislike`, {
-      method: "POST",
-      headers: this.getAuthHeaders(),
-    });
-    return this.handleResponse(response);
+    return this.fetchWithAuth(`${API_BASE_URL}/videos/${videoId}/dislike`, { method: "POST", headers: this.getAuthHeaders(), credentials: "include" });
   }
 
   // Comment endpoints
   async getComments(videoId: string, page = 1, limit = 10) {
-    const response = await fetch(
-      `${API_BASE_URL}/videos/${videoId}/comments?page=${page}&limit=${limit}`,
-      {
-        headers: this.getAuthHeaders(),
-      }
-    );
-    return this.handleResponse(response);
+    const params = new URLSearchParams({ page: page.toString(), limit: limit.toString() });
+    return this.fetchWithAuth(`${API_BASE_URL}/videos/${videoId}/comments?${params}`, { method: "GET", headers: this.getAuthHeaders(), credentials: "include" });
   }
 
   async addComment(videoId: string, content: string) {
-    const response = await fetch(`${API_BASE_URL}/videos/${videoId}/comments`, {
-      method: "POST",
-      headers: this.getAuthHeaders(),
-      body: JSON.stringify({ content }),
-    });
-    return this.handleResponse(response);
+    return this.fetchWithAuth(`${API_BASE_URL}/videos/${videoId}/comments`, { method: "POST", headers: this.getAuthHeaders(), body: JSON.stringify({ content }), credentials: "include" });
   }
 
   async likeComment(commentId: string) {
-    const response = await fetch(`${API_BASE_URL}/comments/${commentId}/like`, {
-      method: "POST",
-      headers: this.getAuthHeaders(),
-    });
-    return this.handleResponse(response);
+    return this.fetchWithAuth(`${API_BASE_URL}/comments/${commentId}/like`, { method: "POST", headers: this.getAuthHeaders(), credentials: "include" });
   }
 
   // Subscription endpoints
   async subscribeToChannel(channelId: string) {
-    const response = await fetch(`${API_BASE_URL}/subscriptions/${channelId}`, {
-      method: "POST",
-      headers: this.getAuthHeaders(),
-    });
-    return this.handleResponse(response);
+    return this.fetchWithAuth(`${API_BASE_URL}/users/subscribe/${channelId}`, { method: "POST", headers: this.getAuthHeaders(), credentials: "include" });
   }
 
   async unsubscribeFromChannel(channelId: string) {
-    const response = await fetch(`${API_BASE_URL}/subscriptions/${channelId}`, {
-      method: "DELETE",
-      headers: this.getAuthHeaders(),
-    });
-    return this.handleResponse(response);
+    return this.fetchWithAuth(`${API_BASE_URL}/unsubscribe/${channelId}`, { method: "DELETE", headers: this.getAuthHeaders(), credentials: "include" });
   }
 
   async getYourVideos(page = 1, limit = 12) {
-    const params = new URLSearchParams({
-      page: page.toString(),
-      limit: limit.toString(),
-    });
-    const response = await fetch(`${API_BASE_URL}/videos/my-videos?${params}`, {
-      headers: this.getAuthHeaders(),
-    });
-    return this.handleResponse(response);
+    const params = new URLSearchParams({ page: page.toString(), limit: limit.toString() });
+    return this.fetchWithAuth(`${API_BASE_URL}/videos/my-videos?${params}`, { method: "GET", headers: this.getAuthHeaders(), credentials: "include" });
   }
 
   async getSubscribedChannels() {
-    const response = await fetch(`${API_BASE_URL}/users/subscriptions`, {
-      method: "GET",
-      headers: this.getAuthHeaders(),
-    });
-    return this.handleResponse(response);
+    return this.fetchWithAuth(`${API_BASE_URL}/users/subscriptions`, { method: "GET", headers: this.getAuthHeaders(), credentials: "include" });
+  }
+
+  async getLikedVideos(page = 1, limit = 12) {
+    const params = new URLSearchParams({ page: page.toString(), limit: limit.toString() });
+    // Assuming your backend has an endpoint like /likes/videos or /users/liked-videos
+    // Adjust the endpoint path below to match your actual backend implementation.
+    return this.fetchWithAuth(`${API_BASE_URL}/likes/videos?${params}`, { method: "GET", headers: this.getAuthHeaders(), credentials: "include" });
   }
 
   // Watch History endpoints
   async getWatchHistory(page = 1, limit = 20) {
-    const response = await fetch(
-      `${API_BASE_URL}/users/watch-history?page=${page}&limit=${limit}`,
-      {
-        headers: this.getAuthHeaders(),
-      }
-    );
-    return this.handleResponse(response);
+    // const params = new URLSearchParams({ page: page.toString(), limit: limit.toString() });
+    return this.fetchWithAuth(`${API_BASE_URL}/users/watch-history?page=${page}&limit=${limit}`, { method: "GET", headers: this.getAuthHeaders(), credentials: "include" });
   }
 
   async addToWatchHistory(videoId: string, watchTime: number) {
-    const response = await fetch(`${API_BASE_URL}/users/watch-history`, {
-      method: "POST",
-      headers: this.getAuthHeaders(),
-      body: JSON.stringify({ videoId, watchTime }),
-    });
-    return this.handleResponse(response);
+    return this.fetchWithAuth(`${API_BASE_URL}/users/watch-history`, { method: "POST", headers: this.getAuthHeaders(), body: JSON.stringify({ videoId, watchTime }), credentials: "include" });
   }
 
   async clearWatchHistory() {
-    const response = await fetch(`${API_BASE_URL}/users/watch-history`, {
-      method: "DELETE",
-      headers: this.getAuthHeaders(),
-    });
-    return this.handleResponse(response);
+    return this.fetchWithAuth(`${API_BASE_URL}/users/watch-history`, { method: "DELETE", headers: this.getAuthHeaders(), credentials: "include" });
   }
 }
 

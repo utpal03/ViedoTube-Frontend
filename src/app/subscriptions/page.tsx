@@ -27,6 +27,7 @@ export default function SubscriptionsPage() {
       try {
         setLoading(true);
         const response = await apiClient.getSubscribedChannels();
+        console.log("Fetched channels:", response.data.channels);
         // Assuming your backend returns data like { data: { channels: [...] } }
         setChannels(response.data.channels || []);
       } catch (err) {
