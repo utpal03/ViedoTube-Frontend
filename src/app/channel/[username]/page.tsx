@@ -1,12 +1,13 @@
+// src/app/channel/[username]/page.tsx
 "use client";
 import { use, useEffect, useState } from "react";
-import { apiClient, type User, type Video } from "@/lib/api"; //
-import { useAuth } from "@/contexts/AuthContext"; //
-import { Button } from "@/components/ui/button"; //
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"; //
-import VideoCard from "@/components/VideoCard"; //
+import { apiClient, type User, type Video } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import VideoCard from "@/components/VideoCard";
 import { Loader2 } from "lucide-react";
-import { Alert, AlertDescription } from "@/components/ui/alert"; //
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface ChannelPageProps {
   params: Promise<{ username: string }>;
@@ -18,68 +19,72 @@ export default function ChannelPage({ params }: ChannelPageProps) {
   const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [subscribeLoading, setSubscribeLoading] = useState(false); // NEW: State for subscribe button loading
+  const [successMessage, setSuccessMessage] = useState(""); // NEW: State for success messages
+
   const { isAuthenticated, user: loggedInUser } = useAuth();
   const isMyChannel = loggedInUser?.username === username;
+  const isSubscribed: boolean = channel?.isSubscribed || false;
+
+  // Modified fetchChannelData to also clear messages
+  const fetchChannelData = async () => {
+    try {
+      setLoading(true);
+      setError(""); // Clear previous errors
+      setSuccessMessage(""); // Clear previous success messages
+      const channelResponse = await apiClient.getChannelProfile(username);
+      setChannel(channelResponse.data);
+
+      const videosResponse = await apiClient.getVideoByownerId(
+        channelResponse.data.username,
+        1,
+        10
+      );
+      setVideos(videosResponse.videos || []);
+    } catch (err) {
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to load channel";
+      setError(errorMessage);
+      setChannel(null); // Ensure channel is null on load error
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchChannelData = async () => {
-      try {
-        setLoading(true);
-        const channelResponse = await apiClient.getChannelProfile(username);
-        setChannel(channelResponse.data);
-        // console.log(channelResponse.data);
-        const videosResponse = await apiClient.getVideoByownerId(
-          channelResponse.data.username,
-          1,
-          10
-        );
-        console.log(videosResponse.videos);
-        setVideos(videosResponse.videos || []);
-      } catch (err) {
-        const errorMessage =
-          err instanceof Error ? err.message : "Failed to load channel";
-        setError(errorMessage);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     if (username) {
       fetchChannelData();
     }
-  }, [username, isAuthenticated]); // Re-fetch if auth status changes to update isSubscribed state
+  }, [username, isAuthenticated, loggedInUser?._id]); // Add loggedInUser?._id to dependencies
 
+  // Modified handleSubscribe to re-fetch channel data and use loading/messages
   const handleSubscribe = async () => {
-    if (!channel || !isAuthenticated) return;
+    if (!channel || !isAuthenticated) {
+      setError("Please log in to subscribe or unsubscribe.");
+      setSuccessMessage("");
+      return;
+    }
+    setSubscribeLoading(true); // Start loading animation
+    setError(""); // Clear previous errors
+    setSuccessMessage(""); // Clear previous success messages
+
     try {
-      if (channel.isSubscribed) {
-        await apiClient.unsubscribeFromChannel(channel._id); //
-        setChannel((prev) =>
-          prev
-            ? {
-                ...prev,
-                isSubscribed: false,
-                subscribersCount: (prev.subscribersCount || 0) - 1,
-              }
-            : null
-        );
+      if (isSubscribed) {
+        console.log(isSubscribed);
+        await apiClient.unsubscribeFromChannel(channel._id);
+        setSuccessMessage("Unsubscribed successfully!");
       } else {
-        await apiClient.subscribeToChannel(channel._id); //
-        setChannel((prev) =>
-          prev
-            ? {
-                ...prev,
-                isSubscribed: true,
-                subscribersCount: (prev.subscribersCount || 0) + 1,
-              }
-            : null
-        );
+        await apiClient.subscribeToChannel(channel._id);
+        setSuccessMessage("Subscribed successfully!");
       }
+      // CRUCIAL CHANGE: Re-fetch channel data to get the latest `isSubscribed` status and `subscribersCount`
+      await fetchChannelData();
     } catch (err) {
-      console.error("Subscription failed:", err);
-      setError(
-        err instanceof Error ? err.message : "Failed to update subscription"
-      );
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to update subscription";
+      setError(errorMessage);
+    } finally {
+      setSubscribeLoading(false); // End loading animation
     }
   };
 
@@ -91,7 +96,9 @@ export default function ChannelPage({ params }: ChannelPageProps) {
     );
   }
 
-  if (error) {
+  // Display error message at the top if loading failed completely
+  if (error && !channel) {
+    // Only show full page error if channel data didn't load
     return (
       <div className="ml-0 md:ml-64 container mx-auto px-4 py-8">
         <Alert variant="destructive">
@@ -127,13 +134,24 @@ export default function ChannelPage({ params }: ChannelPageProps) {
           </div>
         )}
 
+        {/* NEW: Display general error/success messages for actions */}
+        {successMessage && (
+          <Alert className="mb-4">
+            <AlertDescription>{successMessage}</AlertDescription>
+          </Alert>
+        )}
+        {error && ( // Display error message here if it's from an action, not initial load
+          <Alert variant="destructive" className="mb-4">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
         <div className="flex items-center space-x-4 mb-8">
           <Avatar className="h-24 w-24">
             <AvatarImage
               src={channel.avatar || "/placeholder.svg"}
               alt={channel.fullname}
-            />{" "}
-            {/* */}
+            />
             <AvatarFallback className="text-4xl">
               {channel.fullname?.charAt(0)}
             </AvatarFallback>
@@ -145,8 +163,22 @@ export default function ChannelPage({ params }: ChannelPageProps) {
               {channel.subscribersCount?.toLocaleString() || 0} subscribers
             </p>
             {!isMyChannel && isAuthenticated && (
-              <Button onClick={handleSubscribe} className="mt-4">
-                {channel.isSubscribed ? "Subscribed" : "Subscribe"}
+              // MODIFIED: Button to show loading state and correct text
+              <Button
+                onClick={handleSubscribe}
+                className="mt-4"
+                disabled={subscribeLoading} // Disable button while loading
+              >
+                {subscribeLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Updating...
+                  </>
+                ) : isSubscribed ? ( // Use the derived `isSubscribed` state
+                  "Unsubscribe"
+                ) : (
+                  "Subscribe"
+                )}
               </Button>
             )}
           </div>

@@ -272,7 +272,7 @@ class ApiClient {
   }
 
   async unsubscribeFromChannel(channelId: string) {
-    return this.fetchWithAuth(`${API_BASE_URL}/unsubscribe/${channelId}`, { method: "DELETE", headers: this.getAuthHeaders(), credentials: "include" });
+    return this.fetchWithAuth(`${API_BASE_URL}/users/unsubscribe/${channelId}`, { method: "DELETE", headers: this.getAuthHeaders(), credentials: "include" });
   }
 
   async getYourVideos(page = 1, limit = 12) {

@@ -1,194 +1,244 @@
 // src/app/watch/[id]/page.tsx
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import { apiClient, type Video } from "@/lib/api"
-import VideoPlayer from "@/components/VideoPlayer"
-import CommentSection from "@/components/CommentSection"
-import { useAuth } from "@/contexts/AuthContext"
-import { Button } from "@/components/ui/button"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { ThumbsUp, ThumbsDown, Loader2 } from 'lucide-react'
-import { formatDistanceToNow } from "date-fns"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import Link from "next/link"
+import { useEffect, useState } from "react";
+import { apiClient, type Video } from "@/lib/api";
+import VideoPlayer from "@/components/VideoPlayer";
+import CommentSection from "@/components/CommentSection";
+import { useAuth } from "@/contexts/AuthContext";
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { ThumbsUp, ThumbsDown, Loader2 } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import Link from "next/link";
 
 interface WatchPageProps {
   params: {
-    id: string
-  }
+    id: string;
+  };
 }
 
 export default function WatchPage({ params }: WatchPageProps) {
   const { id: videoId } = params;
 
-  const [video, setVideo] = useState<Video | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState("")
-  const { isAuthenticated, user: loggedInUser } = useAuth()
-  const isMyVideo = loggedInUser?._id === video?.owner._id
+  const [video, setVideo] = useState<Video | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState(""); // New state for success messages
+  const [subscribeLoading, setSubscribeLoading] = useState(false);
+  const { isAuthenticated, user: loggedInUser } = useAuth();
+
+  // Determine if the current video is owned by the logged-in user
+  const isMyVideo = isAuthenticated && loggedInUser?._id === video?.owner._id;
 
   useEffect(() => {
-    const fetchVideo = async () => {
+    const fetchVideoAndChannelInfo = async () => {
       try {
-        setLoading(true)
-        // Ensure you're accessing the correct property from the response (e.g., response.data.video if your API wraps it)
-        const response = await apiClient.getVideoById(videoId)
-        setVideo(response.video) // Assuming response directly contains the video object
+        setLoading(true);
+        const videoResponse = await apiClient.getVideoById(videoId);
+        const fetchedVideo = videoResponse.video;
+
+        if (fetchedVideo && fetchedVideo.owner && fetchedVideo.owner.username) {
+          // Call getChannelProfile with the viewer's ID (loggedInUser?._id)
+          // This endpoint now returns the channel user object WITH isSubscribed flag
+          const channelInfoResponse = await apiClient.getChannelProfile(
+            fetchedVideo.owner.username
+          );
+          // Assuming getChannelProfile returns { data: { user: channelUserObjectWithIsSubscribed } }
+          fetchedVideo.owner = channelInfoResponse.data; // Assign the comprehensive channel object back
+        }
+
+        setVideo(fetchedVideo);
+        setError(""); // Clear previous errors on successful fetch
+        setSuccessMessage(""); // Clear success messages
       } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : "Failed to load video"
-        setError(errorMessage)
+        const errorMessage =
+          err instanceof Error
+            ? err.message
+            : "Failed to load video or channel info.";
+        setError(errorMessage);
+        setSuccessMessage(""); // Clear success message on error
       } finally {
-        setLoading(false)
+        setLoading(false);
       }
-    }
+    };
 
     if (videoId) {
-      fetchVideo()
+      fetchVideoAndChannelInfo();
     }
-  }, [videoId, isAuthenticated]) // Added isAuthenticated to useEffect dependencies to refetch if auth status changes
+  }, [videoId, isAuthenticated, loggedInUser?._id]); // Added loggedInUser._id to dependencies
 
-  const handleLike = async () => {
-    if (!video || !isAuthenticated) return
-    try {
-      await apiClient.likeVideo(video._id)
-      setVideo((prev) => {
-        if (!prev) return null
-        return {
-          ...prev,
-          likes: prev.isLiked ? prev.likes - 1 : prev.likes + 1,
-          dislikes: prev.isDisliked ? prev.dislikes - 1 : prev.dislikes,
-          isLiked: !prev.isLiked,
-          isDisliked: false,
-        }
-      })
-    } catch (err) {
-      console.error("Failed to like video:", err)
-      setError(err instanceof Error ? err.message : "Failed to like video")
+  // Consolidated like/dislike handlers for better error reporting
+  const handleInteraction = async (action: "like" | "dislike") => {
+    if (!video || !isAuthenticated) {
+      setError("Please log in to interact with this video.");
+      setSuccessMessage("");
+      return;
     }
-  }
+    // Implement specific loading states for like/dislike buttons if desired
 
-  const handleDislike = async () => {
-    if (!video || !isAuthenticated) return
     try {
-      await apiClient.dislikeVideo(video._id)
-      setVideo((prev) => {
-        if (!prev) return null
-        return {
-          ...prev,
-          dislikes: prev.isDisliked ? prev.dislikes - 1 : prev.dislikes + 1,
-          likes: prev.isLiked ? prev.likes - 1 : prev.likes,
-          isDisliked: !prev.isDisliked,
-          isLiked: false,
-        }
-      })
-    } catch (err) {
-      console.error("Failed to dislike video:", err)
-      setError(err instanceof Error ? err.message : "Failed to dislike video")
-    }
-  }
-
-  const handleSubscribe = async () => {
-    if (!video?.owner || !isAuthenticated) return
-    try {
-      if (video.owner.isSubscribed) {
-        await apiClient.unsubscribeFromChannel(video.owner._id)
-        setVideo((prev) =>
-          prev
-            ? {
-                ...prev,
-                owner: {
-                  ...prev.owner,
-                  isSubscribed: false,
-                  subscribersCount: (prev.owner.subscribersCount || 0) - 1,
-                },
-              }
-            : null,
-        )
+      if (action === "like") {
+        await apiClient.likeVideo(video._id);
       } else {
-        await apiClient.subscribeToChannel(video.owner._id)
-        setVideo((prev) =>
-          prev
-            ? {
-                ...prev,
-                owner: {
-                  ...prev.owner,
-                  isSubscribed: true,
-                  subscribersCount: (prev.owner.subscribersCount || 0) + 1,
-                },
-              }
-            : null,
-        )
+        // action is 'dislike'
+        await apiClient.dislikeVideo(video._id);
       }
+      setVideo((prev) => {
+        if (!prev) return null;
+        let newLikes = prev.likes;
+        let newDislikes = prev.dislikes;
+        let isLiked = prev.isLiked;
+        let isDisliked = prev.isDisliked;
+
+        if (action === "like") {
+          if (isLiked) {
+            newLikes -= 1;
+            isLiked = false;
+          } else {
+            newLikes += 1;
+            isLiked = true;
+            if (isDisliked) {
+              newDislikes -= 1;
+              isDisliked = false;
+            }
+          }
+        } else {
+          // action is 'dislike'
+          if (isDisliked) {
+            newDislikes -= 1;
+            isDisliked = false;
+          } else {
+            newDislikes += 1;
+            isDisliked = true;
+            if (isLiked) {
+              newLikes -= 1;
+              isLiked = false;
+            }
+          }
+        }
+        return {
+          ...prev,
+          likes: newLikes,
+          dislikes: newDislikes,
+          isLiked,
+          isDisliked,
+        };
+      });
+      setError(""); // Clear previous errors on success
+      setSuccessMessage(
+        `Successfully ${action === "like" ? "liked" : "disliked"} video.`
+      );
     } catch (err) {
-      console.error("Subscription failed:", err)
-      setError(err instanceof Error ? err.message : "Failed to update subscription")
+      const errorMessage =
+        err instanceof Error ? err.message : `Failed to ${action} video.`;
+      setError(errorMessage);
+      setSuccessMessage(""); // Clear success message on error
     }
-  }
+  };
+
+  const handleSubscribeToggle = async () => {
+    if (!video?.owner || !isAuthenticated) {
+      setError("Please log in to subscribe.");
+      setSuccessMessage("");
+      return;
+    }
+    setSubscribeLoading(true);
+
+    try {
+      // Use apiClient.subscribeToChannel (which is now a toggle in your service)
+      const result = await apiClient.subscribeToChannel(video.owner._id); // Pass channel ID
+      // Assuming result is { subscribed: boolean, message: string } from backend service
+      setVideo((prev) =>
+        prev
+          ? {
+              ...prev,
+              owner: {
+                ...prev.owner,
+                isSubscribed: result.data.subscribed, // Update isSubscribed flag from backend response
+                subscribersCount: result.data.subscribed // Update count based on backend's response status
+                  ? (prev.owner.subscribersCount || 0) + 1
+                  : (prev.owner.subscribersCount || 0) - 1,
+              },
+            }
+          : null
+      );
+      setSuccessMessage(result.message); // Show backend message (e.g., "Subscribed successfully.")
+      setError(""); // Clear previous errors on success
+    } catch (err) {
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to update subscription.";
+      setError(errorMessage); // Display error message from backend
+      setSuccessMessage(""); // Clear success message on error
+    } finally {
+      setSubscribeLoading(false);
+    }
+  };
 
   const formatViews = (views: number) => {
     if (views >= 1000000) {
-      return `${(views / 1000000).toFixed(1)}M`
+      return `${(views / 1000000).toFixed(1)}M`;
     } else if (views >= 1000) {
-      return `${(views / 1000).toFixed(1)}K`
+      return `${(views / 1000).toFixed(1)}K`;
     }
-    return views.toString()
-  }
+    return views.toString();
+  };
 
   if (loading) {
     return (
-      // REMOVED 'ml-0 md:ml-64'
       <div className="flex items-center justify-center min-h-[400px]">
         <Loader2 className="h-8 w-8 animate-spin" />
       </div>
-    )
+    );
   }
 
-  if (error) {
+  if (error && !successMessage) {
+    // Show error if it exists and no success message overrides it
     return (
-      // REMOVED 'ml-0 md:ml-64'
       <div className="container mx-auto px-4 py-8">
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
-        <p className="text-center text-muted-foreground mt-4">Could not load video. Please try again.</p>
+        <p className="text-center text-muted-foreground mt-4">
+          Could not load video. Please try again.
+        </p>
       </div>
-    )
+    );
   }
 
   if (!video) {
     return (
-      // REMOVED 'ml-0 md:ml-64'
       <div className="container mx-auto px-4 py-8">
         <Alert>
           <AlertDescription>Video not found.</AlertDescription>
         </Alert>
       </div>
-    )
+    );
   }
 
   return (
-    // REMOVED 'ml-0 md:ml-64' from this main wrapper
     <div>
       <div className="container mx-auto px-4 py-8">
-        {/* Changed lg:grid-cols-3 to md:grid-cols-3 */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {/* Changed lg:col-span-2 to md:col-span-2 */}
           <div className="md:col-span-2">
             <VideoPlayer videoId={video._id} videoUrl={video.videofile} />
-
             <h1 className="text-xl font-bold mt-4">{video.title}</h1>
             <div className="flex items-center justify-between mt-2 flex-wrap gap-2">
               <div className="flex items-center space-x-2 text-sm text-muted-foreground">
                 <span>{formatViews(video.views)} views</span>
                 <span>•</span>
-                <span>{formatDistanceToNow(new Date(video.createdAt), { addSuffix: true })}</span>
+                <span>
+                  {formatDistanceToNow(new Date(video.createdAt), {
+                    addSuffix: true,
+                  })}
+                </span>
               </div>
               <div className="flex items-center space-x-4">
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={handleLike}
+                  onClick={() => handleInteraction("like")}
                   disabled={!isAuthenticated}
                   className={video.isLiked ? "text-primary" : ""}
                 >
@@ -198,7 +248,7 @@ export default function WatchPage({ params }: WatchPageProps) {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={handleDislike}
+                  onClick={() => handleInteraction("dislike")}
                   disabled={!isAuthenticated}
                   className={video.isDisliked ? "text-destructive" : ""}
                 >
@@ -211,8 +261,13 @@ export default function WatchPage({ params }: WatchPageProps) {
             <div className="flex items-center space-x-4 mt-6 border-t pt-4">
               <Link href={`/channel/${video.owner.username}`}>
                 <Avatar className="h-10 w-10">
-                  <AvatarImage src={video.owner.avatar || "/placeholder.svg"} alt={video.owner.fullname} />
-                  <AvatarFallback>{video.owner.fullname?.charAt(0)}</AvatarFallback>
+                  <AvatarImage
+                    src={video.owner.avatar || "/placeholder.svg"}
+                    alt={video.owner.fullname}
+                  />
+                  <AvatarFallback>
+                    {video.owner.fullname?.charAt(0)}
+                  </AvatarFallback>
                 </Avatar>
               </Link>
               <div className="flex-1">
@@ -220,15 +275,42 @@ export default function WatchPage({ params }: WatchPageProps) {
                   <h2 className="font-semibold">{video.owner.fullname}</h2>
                 </Link>
                 <p className="text-sm text-muted-foreground">
-                  {video.owner.subscribersCount?.toLocaleString() || 0} subscribers
+                  {video.owner.subscribersCount?.toLocaleString() || 0}{" "}
+                  subscribers
                 </p>
               </div>
               {!isMyVideo && isAuthenticated && (
-                <Button onClick={handleSubscribe}>
-                  {video.owner.isSubscribed ? "Subscribed" : "Subscribe"}
+                <Button
+                  onClick={handleSubscribeToggle}
+                  disabled={subscribeLoading}
+                  className={
+                    video.owner.isSubscribed
+                      ? "bg-muted text-muted-foreground hover:bg-muted/80"
+                      : ""
+                  }
+                >
+                  {subscribeLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : video.owner.isSubscribed ? (
+                    "Unsubscribe" // <--- Changed from "Subscribed"
+                  ) : (
+                    "Subscribe"
+                  )}
                 </Button>
               )}
             </div>
+
+            {/* Display success/error messages for subscription/like/dislike */}
+            {successMessage && (
+              <Alert className="mt-4">
+                <AlertDescription>{successMessage}</AlertDescription>
+              </Alert>
+            )}
+            {error && (
+              <Alert variant="destructive" className="mt-4">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
 
             <div className="mt-4 p-4 bg-muted rounded-lg text-sm">
               <p className="whitespace-pre-line">{video.description}</p>
@@ -238,11 +320,8 @@ export default function WatchPage({ params }: WatchPageProps) {
               <CommentSection videoId={video._id} />
             </div>
           </div>
-          {/* Changed lg:col-span-1 to md:col-span-1 */}
           <div className="md:col-span-1">
-            {/* Related videos or other content */}
             <h3 className="text-xl font-bold mb-4">Related Videos</h3>
-            {/* Implement logic to fetch and display related videos here */}
             <div className="space-y-4">
               <p className="text-muted-foreground">No related videos found.</p>
             </div>
@@ -250,5 +329,5 @@ export default function WatchPage({ params }: WatchPageProps) {
         </div>
       </div>
     </div>
-  )
+  );
 }
